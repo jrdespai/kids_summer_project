@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Prevent zooming, scrolling, and respect safe areas on mobile/tablet devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Antigravity Physics Lab</title>
+    
+    <!-- Google Fonts - Outfit for a premium, modern tech aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Link our custom CSS style sheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Canvas container — fills all space above the control console -->
+    <main id="canvas-container">
+        <!-- Matter.js will inject the canvas element here dynamically -->
+        <div id="tap-instruction">TAP OR CLICK ANYWHERE TO DROP SHAPES</div>
+        <div id="danger-warning" class="hidden">LINE BREACH! 3.0s</div>
+    </main>
+
+    <!-- Toddler-proof control console — sits below playfield, blocks stray canvas touch -->
+    <footer id="control-bar" role="toolbar" aria-label="Physics lab controls">
+        <div class="control-section stats-panel">
+            <div class="stat-badge">
+                <span class="stat-label">SCORE</span>
+                <span id="score-counter" class="stat-value">0</span>
+            </div>
+            <div class="stat-badge">
+                <span class="stat-label">SHAPES</span>
+                <span id="shape-counter" class="stat-value">0</span>
+            </div>
+        </div>
+
+        <div class="control-section console-actions">
+            <button
+                id="reset-btn"
+                class="toddler-btn reset-btn"
+                type="button"
+                aria-label="Reset machine — clear all shapes and score"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="btn-icon" aria-hidden="true">
+                    <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
+                </svg>
+                <span class="btn-label">RESET MACHINE</span>
+            </button>
+
+            <button
+                id="gravity-toggle-btn"
+                class="toddler-btn gravity-btn"
+                type="button"
+                aria-pressed="false"
+                aria-label="Reverse gravity — flip world upside down"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="btn-icon" aria-hidden="true">
+                    <path d="M12 3v18M5 10l7-7 7 7M5 14l7 7 7-7"/>
+                </svg>
+                <span class="btn-label">REVERSE GRAVITY</span>
+            </button>
+        </div>
+    </footer>
+
+    <!-- Premium Game Over Overlay covering the screen -->
+    <div id="game-over-overlay" class="hidden">
+        <div class="game-over-card">
+            <h2>GAME OVER</h2>
+            <div class="final-score-section">
+                <span class="final-score-label">FINAL SCORE</span>
+                <span id="final-score-value">0</span>
+            </div>
+            <button id="restart-btn" class="glass-btn primary large">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Play Again</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Load Matter.js from CDN before our application script -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- Load our app script -->
+    <script src="app.js"></script>
+</body>
+</html>
