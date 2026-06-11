@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Camera/mic require https or localhost — run: npm start, then visit http://YOUR-IP:3000/studio.html on your phone -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Asset Studio — Antigravity Physics Lab</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="studio.css">
+</head>
+<body>
+    <header class="studio-header">
+        <a href="index.html" class="back-link" aria-label="Back to game">&larr; Game</a>
+        <h1>Asset Studio</h1>
+        <p class="header-hint">Capture sprites &amp; sounds for the physics lab</p>
+    </header>
+
+    <nav class="tab-bar" role="tablist" aria-label="Asset type">
+        <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="sprites-panel" id="tab-sprites" data-tab="sprites">Sprites</button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" aria-controls="sounds-panel" id="tab-sounds" data-tab="sounds">Sounds</button>
+    </nav>
+
+    <main class="studio-main">
+        <!-- Sprites panel -->
+        <section id="sprites-panel" class="panel active" role="tabpanel" aria-labelledby="tab-sprites">
+            <div class="field-group">
+                <label for="tier-select">Celestial tier</label>
+                <select id="tier-select">
+                    <option value="0">Tier 1 — Asteroid</option>
+                    <option value="1">Tier 2 — Moon</option>
+                    <option value="2">Tier 3 — Planet</option>
+                    <option value="3">Tier 4 — Star</option>
+                    <option value="4">Tier 5 — Nebula</option>
+                </select>
+            </div>
+
+            <div id="camera-error" class="error-banner hidden" role="alert"></div>
+
+            <div class="camera-wrap">
+                <video id="camera-preview" autoplay playsinline muted aria-label="Camera preview"></video>
+                <canvas id="capture-canvas" class="hidden" aria-hidden="true"></canvas>
+            </div>
+
+            <button type="button" id="capture-btn" class="action-btn primary">Take Photo</button>
+
+            <div id="sprite-edit" class="hidden">
+                <div class="field-group">
+                    <label for="threshold-slider">Paper removal sensitivity <span id="threshold-value">230</span></label>
+                    <input type="range" id="threshold-slider" min="180" max="250" value="230" step="1">
+                    <p class="field-hint">Lower = keeps more white in the drawing. Higher = removes more background.</p>
+                </div>
+
+                <div class="preview-row">
+                    <figure class="preview-card">
+                        <figcaption>Processed</figcaption>
+                        <canvas id="processed-preview" width="200" height="200"></canvas>
+                    </figure>
+                    <figure class="preview-card">
+                        <figcaption>In-game (circle)</figcaption>
+                        <canvas id="circle-preview" width="200" height="200"></canvas>
+                    </figure>
+                </div>
+
+                <div class="btn-row">
+                    <button type="button" id="save-sprite-btn" class="action-btn primary">Save Sprite</button>
+                    <button type="button" id="retake-btn" class="action-btn secondary">Retake</button>
+                </div>
+            </div>
+
+            <button type="button" id="reset-sprite-btn" class="action-btn danger-outline">Reset tier to default</button>
+        </section>
+
+        <!-- Sounds panel -->
+        <section id="sounds-panel" class="panel" role="tabpanel" aria-labelledby="tab-sounds" hidden>
+            <div class="field-group">
+                <label for="sound-select">Sound slot</label>
+                <select id="sound-select">
+                    <option value="spawn">Spawn — shape drops</option>
+                    <option value="merge">Merge — shapes combine</option>
+                    <option value="gameover">Game Over</option>
+                </select>
+            </div>
+
+            <div id="mic-error" class="error-banner hidden" role="alert"></div>
+
+            <div class="recorder-status">
+                <span id="recorder-indicator" class="rec-dot"></span>
+                <span id="recorder-label">Ready to record</span>
+            </div>
+
+            <div class="btn-row">
+                <button type="button" id="record-btn" class="action-btn primary">Record</button>
+                <button type="button" id="stop-record-btn" class="action-btn secondary" disabled>Stop</button>
+                <button type="button" id="play-record-btn" class="action-btn secondary" disabled>Preview</button>
+            </div>
+
+            <div class="btn-row">
+                <button type="button" id="save-sound-btn" class="action-btn primary" disabled>Save Sound</button>
+            </div>
+
+            <button type="button" id="reset-sound-btn" class="action-btn danger-outline">Reset sound to default</button>
+        </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <script src="asset-store.js"></script>
+    <script src="studio.js"></script>
+</body>
+</html>

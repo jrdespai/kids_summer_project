@@ -25,6 +25,7 @@
     <!-- Toddler-proof control console — sits below playfield, blocks stray canvas touch -->
     <footer id="control-bar" role="toolbar" aria-label="Physics lab controls">
         <div class="control-section stats-panel">
+            <a href="studio.html" id="studio-link" class="studio-link" aria-label="Asset Studio — parent settings">Studio</a>
             <div class="stat-badge">
                 <span class="stat-label">SCORE</span>
                 <span id="score-counter" class="stat-value">0</span>
@@ -82,7 +83,7 @@
 
     <!-- Load Matter.js from CDN before our application script -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-    <!-- Load our app script -->
+    <script src="asset-store.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

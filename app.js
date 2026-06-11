@@ -9,7 +9,7 @@
     // ---------------------------------------------------------
     // 0. Asset Configuration & Mapping
     // ---------------------------------------------------------
-    const SPRITE_CONFIG = {
+    const DEFAULT_SPRITE_CONFIG = {
         0: 'assets/images/tier1.png', // Asteroid
         1: 'assets/images/tier2.png', // Moon
         2: 'assets/images/tier3.png', // Planet
@@ -17,11 +17,34 @@
         4: 'assets/images/tier5.png'  // Nebula
     };
 
-    const SOUND_CONFIG = {
+    const DEFAULT_SOUND_CONFIG = {
         spawn: 'assets/sounds/spawn.mp3',
         merge: 'assets/sounds/merge.mp3',
         gameover: 'assets/sounds/gameover.mp3'
     };
+
+    const spriteConfig = { ...DEFAULT_SPRITE_CONFIG };
+    const soundConfig = { ...DEFAULT_SOUND_CONFIG };
+
+    async function resolveAssetUrls() {
+        if (!window.AssetStore) return;
+
+        AssetStore.revokeAllObjectUrls();
+        Object.assign(spriteConfig, DEFAULT_SPRITE_CONFIG);
+        Object.assign(soundConfig, DEFAULT_SOUND_CONFIG);
+
+        try {
+            const overrides = await AssetStore.getAllOverrides();
+            overrides.sprites.forEach(({ tier, blob }) => {
+                spriteConfig[tier] = AssetStore.createObjectUrl(blob);
+            });
+            overrides.sounds.forEach(({ name, blob }) => {
+                soundConfig[name] = AssetStore.createObjectUrl(blob);
+            });
+        } catch (err) {
+            console.warn('Could not load custom assets from IndexedDB:', err);
+        }
+    }
 
     // ---------------------------------------------------------
     // 0.5 Web Audio Manager for Overlapping, Lag-Free Sound Playback
@@ -120,9 +143,18 @@
             // Wait for context resume — game over fires without a tap, so this must complete first
             this.resume().then(() => this.startPlayback(name));
         }
+
+        reloadSounds() {
+            this.buffers = {};
+            this.pendingPlays.clear();
+            if (!this.initialized) return;
+            Object.entries(this.config).forEach(([name, path]) => {
+                this.loadSound(name, path);
+            });
+        }
     }
 
-    const audioManager = new WebAudioManager(SOUND_CONFIG);
+    const audioManager = new WebAudioManager(soundConfig);
 
     // ---------------------------------------------------------
     // 0.6 Sprite Texture Preloader
@@ -130,7 +162,8 @@
     const spriteImages = {};
 
     function preloadSprites() {
-        Object.entries(SPRITE_CONFIG).forEach(([tier, src]) => {
+        Object.keys(spriteImages).forEach((tier) => delete spriteImages[tier]);
+        Object.entries(spriteConfig).forEach(([tier, src]) => {
             const img = new Image();
             img.src = src;
             img.onload = () => {
@@ -141,6 +174,12 @@
                 spriteImages[tier] = null;
             };
         });
+    }
+
+    async function reloadCustomAssets() {
+        await resolveAssetUrls();
+        preloadSprites();
+        audioManager.reloadSounds();
     }
 
     // ---------------------------------------------------------
@@ -224,8 +263,8 @@
     // ---------------------------------------------------------
     // 3. Matter.js Engine Initialization
     // ---------------------------------------------------------
-    function initPhysics() {
-        // Preload custom sprite textures and begin decoding sound buffers early
+    async function initPhysics() {
+        await resolveAssetUrls();
         preloadSprites();
         audioManager.init();
 
@@ -966,5 +1005,16 @@
     // ---------------------------------------------------------
     // 12. Lifecycle Bootstrapper
     // ---------------------------------------------------------
-    window.addEventListener('DOMContentLoaded', initPhysics);
+    window.addEventListener('DOMContentLoaded', () => {
+        initPhysics();
+    });
+
+    // Reload custom assets when returning from Asset Studio (bfcache restore)
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted && engine) {
+            reloadCustomAssets();
+        }
+    });
+
+    window.reloadCustomAssets = reloadCustomAssets;
 })();

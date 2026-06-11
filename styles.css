@@ -109,6 +109,24 @@ body {
     flex-shrink: 0;
 }
 
+.studio-link {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.25);
+    text-decoration: none;
+    padding: 0.35rem 0.5rem;
+    border-radius: 8px;
+    align-self: flex-start;
+    margin-top: 0.15rem;
+}
+
+.studio-link:hover,
+.studio-link:focus-visible {
+    color: rgba(0, 242, 254, 0.7);
+}
+
 .stat-badge {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
