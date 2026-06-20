@@ -163,6 +163,25 @@ body {
     transform: scale(1.3);
 }
 
+.toddler-btn.expert-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    max-width: 120px;
+    flex: 0 1 auto;
+    padding: 0.75rem 0.85rem;
+}
+
+.toddler-btn.expert-btn.active {
+    background: rgba(255, 159, 10, 0.2);
+    border-color: rgba(255, 159, 10, 0.55);
+    color: #ffcc00;
+    box-shadow: 0 0 16px rgba(255, 159, 10, 0.25);
+}
+
+.toddler-btn.expert-btn .btn-label {
+    font-size: clamp(0.7rem, 2vw, 0.85rem);
+}
+
 /* Console action buttons — massive touch targets for small hands */
 .control-section.console-actions {
     display: flex;
@@ -472,6 +491,46 @@ body {
     font-weight: 800;
     color: #00f2fe;
     text-shadow: 0 0 20px rgba(0, 242, 254, 0.5);
+}
+
+.new-best-banner {
+    display: inline-block;
+    margin-bottom: 1rem;
+    padding: 0.5rem 1.25rem;
+    border-radius: 50px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: #050811;
+    background: linear-gradient(135deg, #ffd60a 0%, #ff9f0a 100%);
+    box-shadow: 0 0 24px rgba(255, 214, 10, 0.45);
+    animation: newBestPulse 1s ease-in-out infinite;
+}
+
+.new-best-banner.hidden {
+    display: none;
+}
+
+@keyframes newBestPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.best-score-section {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 1rem 1.5rem;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+#best-score-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .glass-btn.large {

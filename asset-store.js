@@ -4,9 +4,10 @@
  */
 (() => {
     const DB_NAME = 'antigravity-assets';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2;
     const SPRITE_STORE = 'sprites';
     const SOUND_STORE = 'sounds';
+    const STATS_STORE = 'stats';
 
     let dbPromise = null;
 
@@ -23,6 +24,9 @@
                 }
                 if (!db.objectStoreNames.contains(SOUND_STORE)) {
                     db.createObjectStore(SOUND_STORE);
+                }
+                if (!db.objectStoreNames.contains(STATS_STORE)) {
+                    db.createObjectStore(STATS_STORE);
                 }
             };
 
@@ -158,6 +162,24 @@
         revokeAllObjectUrls() {
             objectUrls.forEach((url) => URL.revokeObjectURL(url));
             objectUrls.clear();
+        },
+
+        getGameStats() {
+            return storeGet(STATS_STORE, 'profile').then((record) => {
+                if (!record) {
+                    return {
+                        classicBest: 0,
+                        expertBest: 0,
+                        totalGames: 0,
+                        expertMode: false
+                    };
+                }
+                return record;
+            });
+        },
+
+        saveGameStats(stats) {
+            return storePut(STATS_STORE, 'profile', stats);
         }
     };
 })();

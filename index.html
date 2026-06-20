@@ -31,6 +31,10 @@
                 <span id="score-counter" class="stat-value">0</span>
             </div>
             <div class="stat-badge">
+                <span class="stat-label">BEST</span>
+                <span id="best-score-counter" class="stat-value">0</span>
+            </div>
+            <div class="stat-badge">
                 <span class="stat-label">SHAPES</span>
                 <span id="shape-counter" class="stat-value">0</span>
             </div>
@@ -47,6 +51,16 @@
                     <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
                 </svg>
                 <span class="btn-label">RESET MACHINE</span>
+            </button>
+
+            <button
+                id="expert-mode-btn"
+                class="toddler-btn expert-btn"
+                type="button"
+                aria-pressed="false"
+                aria-label="Expert mode — faster drops and harder rules"
+            >
+                <span class="btn-label">EXPERT</span>
             </button>
 
             <button
@@ -67,10 +81,15 @@
     <!-- Premium Game Over Overlay covering the screen -->
     <div id="game-over-overlay" class="hidden">
         <div class="game-over-card">
+            <div id="new-best-banner" class="new-best-banner hidden" aria-live="polite">NEW BEST!</div>
             <h2>GAME OVER</h2>
             <div class="final-score-section">
                 <span class="final-score-label">FINAL SCORE</span>
                 <span id="final-score-value">0</span>
+            </div>
+            <div class="best-score-section">
+                <span class="final-score-label">PERSONAL BEST</span>
+                <span id="best-score-value">0</span>
             </div>
             <button id="restart-btn" class="glass-btn primary large">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
