@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Camera/mic require https or localhost — run: npm start, then visit http://YOUR-IP:3000/studio.html on your phone -->
+    <!-- Camera/mic require https — e.g. GitHub Pages or npm start on localhost -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Asset Studio — Antigravity Physics Lab</title>
 
@@ -38,6 +38,14 @@
                 </select>
             </div>
 
+            <div class="field-group">
+                <span class="field-label">Sprite type</span>
+                <div class="mode-toggle" role="group" aria-label="Sprite type">
+                    <button type="button" id="mode-drawing" class="mode-btn active" aria-pressed="true">Drawing</button>
+                    <button type="button" id="mode-photo" class="mode-btn" aria-pressed="false">Photo / Selfie</button>
+                </div>
+            </div>
+
             <div id="camera-error" class="error-banner hidden" role="alert"></div>
 
             <div class="camera-wrap">
@@ -45,22 +53,45 @@
                 <canvas id="capture-canvas" class="hidden" aria-hidden="true"></canvas>
             </div>
 
-            <button type="button" id="capture-btn" class="action-btn primary">Take Photo</button>
+            <div class="btn-row">
+                <button type="button" id="capture-btn" class="action-btn primary">Take Photo</button>
+                <label for="upload-input" id="upload-label" class="action-btn secondary upload-label">Upload Photo</label>
+                <input type="file" id="upload-input" class="hidden" accept="image/*" capture="environment">
+            </div>
 
             <div id="sprite-edit" class="hidden">
-                <div class="field-group">
-                    <label for="threshold-slider">Paper removal sensitivity <span id="threshold-value">230</span></label>
-                    <input type="range" id="threshold-slider" min="180" max="250" value="230" step="1">
-                    <p class="field-hint">Lower = keeps more white in the drawing. Higher = removes more background.</p>
+                <p id="photo-hint" class="field-hint photo-hint hidden">Your photo is center-cropped to a square. The game clips it to a circle — no background removal needed.</p>
+
+                <div id="drawing-controls">
+                    <div class="field-group">
+                        <label for="removal-slider">Background removal <span id="removal-value">55</span></label>
+                        <input type="range" id="removal-slider" min="0" max="100" value="55" step="1">
+                        <p class="field-hint">Higher removes more paper. Lower preserves light colors in the drawing.</p>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="shadow-slider">Shadow cleanup <span id="shadow-value">45</span></label>
+                        <input type="range" id="shadow-slider" min="0" max="100" value="45" step="1">
+                        <p class="field-hint">Higher removes gray shadows and halos left around the drawing.</p>
+                    </div>
+
+                    <div class="pick-bg-row">
+                        <button type="button" id="pick-bg-btn" class="action-btn secondary pick-bg-btn">Pick paper color</button>
+                        <span id="pick-bg-hint" class="pick-bg-hint">Tap the original photo on an empty area of paper</span>
+                    </div>
                 </div>
 
-                <div class="preview-row">
+                <div class="preview-row preview-row-three">
                     <figure class="preview-card">
+                        <figcaption>Original</figcaption>
+                        <canvas id="original-preview" class="pick-target" width="200" height="200" aria-label="Original photo"></canvas>
+                    </figure>
+                    <figure class="preview-card" id="processed-preview-wrap">
                         <figcaption>Processed</figcaption>
                         <canvas id="processed-preview" width="200" height="200"></canvas>
                     </figure>
                     <figure class="preview-card">
-                        <figcaption>In-game (circle)</figcaption>
+                        <figcaption>In-game</figcaption>
                         <canvas id="circle-preview" width="200" height="200"></canvas>
                     </figure>
                 </div>

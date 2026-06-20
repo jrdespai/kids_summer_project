@@ -4,20 +4,33 @@
 (() => {
     const OUTPUT_SIZE = 512;
     const TIER_NAMES = ['Asteroid', 'Moon', 'Planet', 'Star', 'Nebula'];
+    const CORNER_PATCH_RATIO = 0.08;
 
     // DOM refs
     const tabButtons = document.querySelectorAll('.tab-btn');
     const spritesPanel = document.getElementById('sprites-panel');
     const soundsPanel = document.getElementById('sounds-panel');
     const tierSelect = document.getElementById('tier-select');
+    const modeDrawingBtn = document.getElementById('mode-drawing');
+    const modePhotoBtn = document.getElementById('mode-photo');
     const cameraPreview = document.getElementById('camera-preview');
-    const captureCanvas = document.getElementById('capture-canvas');
     const captureBtn = document.getElementById('capture-btn');
+    const uploadInput = document.getElementById('upload-input');
+    const uploadLabel = document.getElementById('upload-label');
     const cameraError = document.getElementById('camera-error');
     const spriteEdit = document.getElementById('sprite-edit');
-    const thresholdSlider = document.getElementById('threshold-slider');
-    const thresholdValue = document.getElementById('threshold-value');
+    const photoHint = document.getElementById('photo-hint');
+    const drawingControls = document.getElementById('drawing-controls');
+    const removalSlider = document.getElementById('removal-slider');
+    const removalValue = document.getElementById('removal-value');
+    const shadowSlider = document.getElementById('shadow-slider');
+    const shadowValue = document.getElementById('shadow-value');
+    const pickBgBtn = document.getElementById('pick-bg-btn');
+    const pickBgHint = document.getElementById('pick-bg-hint');
+    const originalPreview = document.getElementById('original-preview');
+    const processedPreviewWrap = document.getElementById('processed-preview-wrap');
     const processedPreview = document.getElementById('processed-preview');
+    const previewRow = document.querySelector('#sprite-edit .preview-row');
     const circlePreview = document.getElementById('circle-preview');
     const saveSpriteBtn = document.getElementById('save-sprite-btn');
     const retakeBtn = document.getElementById('retake-btn');
@@ -38,6 +51,9 @@
     let rawCaptureCanvas = null;
     let processedBlob = null;
     let toastTimer = null;
+    let pickedBackground = null;
+    let pickBgMode = false;
+    let spriteMode = 'drawing'; // 'drawing' | 'photo'
 
     let mediaRecorder = null;
     let micStream = null;
@@ -69,6 +85,21 @@
         el.textContent = '';
     }
 
+    function analyzePixel(r, g, b) {
+        const maxC = Math.max(r, g, b);
+        const minC = Math.min(r, g, b);
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+        return { lum, sat, maxC, minC };
+    }
+
+    function colorDistance(r, g, b, br, bg, bb) {
+        const dr = r - br;
+        const dg = g - bg;
+        const db = b - bb;
+        return Math.sqrt(dr * dr + dg * dg + db * db);
+    }
+
     // ---------------------------------------------------------
     // Tabs
     // ---------------------------------------------------------
@@ -98,8 +129,75 @@
     // ---------------------------------------------------------
     // Sprite processing
     // ---------------------------------------------------------
-    function removeWhiteBackground(imageData, threshold) {
+    function sampleCornerBackground(imageData) {
         const { data, width, height } = imageData;
+        const patchW = Math.max(4, Math.floor(width * CORNER_PATCH_RATIO));
+        const patchH = Math.max(4, Math.floor(height * CORNER_PATCH_RATIO));
+        let rSum = 0;
+        let gSum = 0;
+        let bSum = 0;
+        let count = 0;
+
+        const corners = [
+            [0, 0],
+            [width - patchW, 0],
+            [0, height - patchH],
+            [width - patchW, height - patchH]
+        ];
+
+        corners.forEach(([startX, startY]) => {
+            for (let y = startY; y < startY + patchH; y++) {
+                for (let x = startX; x < startX + patchW; x++) {
+                    const i = (y * width + x) * 4;
+                    rSum += data[i];
+                    gSum += data[i + 1];
+                    bSum += data[i + 2];
+                    count++;
+                }
+            }
+        });
+
+        return {
+            r: Math.round(rSum / count),
+            g: Math.round(gSum / count),
+            b: Math.round(bSum / count)
+        };
+    }
+
+    function buildRemovalOptions(removalStrength, shadowCleanup) {
+        const strength = removalStrength / 100;
+        const shadow = shadowCleanup / 100;
+
+        return {
+            colorTolerance: 12 + strength * 75,
+            fuzzyTolerance: 18 + strength * 90,
+            lumThreshold: 255 - strength * 135,
+            satMax: 0.28 - strength * 0.18,
+            shadowLumMin: 255 - shadow * 145,
+            shadowSatMax: 0.25 - shadow * 0.1
+        };
+    }
+
+    function isBackgroundLike(r, g, b, bg, opts, fuzzy) {
+        const { lum, sat } = analyzePixel(r, g, b);
+        const tolerance = fuzzy ? opts.fuzzyTolerance : opts.colorTolerance;
+        const dist = colorDistance(r, g, b, bg.r, bg.g, bg.b);
+
+        if (dist <= tolerance) {
+            return true;
+        }
+
+        if (sat <= opts.satMax && lum >= opts.lumThreshold) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function removeBackground(imageData, removalStrength, shadowCleanup, customBg) {
+        const { data, width, height } = imageData;
+        const bg = customBg || sampleCornerBackground(imageData);
+        const opts = buildRemovalOptions(removalStrength, shadowCleanup);
         const visited = new Uint8Array(width * height);
         const queue = [];
 
@@ -107,57 +205,138 @@
             return y * width + x;
         }
 
-        function isPaperLike(i) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            return r >= threshold && g >= threshold && b >= threshold;
-        }
-
-        function enqueue(x, y) {
+        function enqueue(x, y, fuzzy) {
             if (x < 0 || y < 0 || x >= width || y >= height) return;
             const i = idx(x, y);
             if (visited[i]) return;
             const pi = i * 4;
-            if (!isPaperLike(pi)) return;
+            if (!isBackgroundLike(data[pi], data[pi + 1], data[pi + 2], bg, opts, fuzzy)) {
+                return;
+            }
             visited[i] = 1;
             queue.push(i);
         }
 
         for (let x = 0; x < width; x++) {
-            enqueue(x, 0);
-            enqueue(x, height - 1);
+            enqueue(x, 0, false);
+            enqueue(x, height - 1, false);
         }
         for (let y = 0; y < height; y++) {
-            enqueue(0, y);
-            enqueue(width - 1, y);
+            enqueue(0, y, false);
+            enqueue(width - 1, y, false);
         }
 
         while (queue.length > 0) {
             const i = queue.pop();
             const x = i % width;
             const y = (i - x) / width;
-            enqueue(x - 1, y);
-            enqueue(x + 1, y);
-            enqueue(x, y - 1);
-            enqueue(x, y + 1);
+            enqueue(x - 1, y, true);
+            enqueue(x + 1, y, true);
+            enqueue(x, y - 1, true);
+            enqueue(x, y + 1, true);
         }
 
         for (let i = 0; i < width * height; i++) {
             const pi = i * 4;
+            const r = data[pi];
+            const g = data[pi + 1];
+            const b = data[pi + 2];
+
             if (visited[i]) {
                 data[pi + 3] = 0;
-            } else if (isPaperLike(pi)) {
-                const r = data[pi];
-                const g = data[pi + 1];
-                const b = data[pi + 2];
-                const minChannel = Math.min(r, g, b);
-                const feather = Math.max(0, minChannel - (threshold - 25));
-                data[pi + 3] = Math.min(data[pi + 3], Math.round(255 - feather * 10));
+                continue;
+            }
+
+            const { lum, sat } = analyzePixel(r, g, b);
+            const isInteriorPaper = isBackgroundLike(r, g, b, bg, opts, false);
+
+            if (isInteriorPaper) {
+                const preserve = Math.min(255, Math.round((lum - opts.lumThreshold + 40) * 4));
+                data[pi + 3] = Math.min(data[pi + 3], Math.max(48, preserve));
+            }
+        }
+
+        for (let i = 0; i < width * height; i++) {
+            if (visited[i]) continue;
+
+            const pi = i * 4;
+            const r = data[pi];
+            const g = data[pi + 1];
+            const b = data[pi + 2];
+            const { lum, sat } = analyzePixel(r, g, b);
+
+            if (data[pi + 3] === 0) continue;
+
+            const nearBg = colorDistance(r, g, b, bg.r, bg.g, bg.b) <= opts.colorTolerance + 10;
+            const shadowLike = sat <= opts.shadowSatMax && lum >= opts.shadowLumMin;
+
+            if (nearBg || shadowLike) {
+                data[pi + 3] = 0;
             }
         }
 
         return imageData;
+    }
+
+    function processPhotoCanvas(sourceCanvas) {
+        const out = document.createElement('canvas');
+        out.width = OUTPUT_SIZE;
+        out.height = OUTPUT_SIZE;
+        const outCtx = out.getContext('2d');
+        outCtx.drawImage(sourceCanvas, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+        return out;
+    }
+
+    function isPhotoMode() {
+        return spriteMode === 'photo';
+    }
+
+    function getCameraFacingMode() {
+        return isPhotoMode() ? 'user' : 'environment';
+    }
+
+    function updateUploadCapture() {
+        if (isPhotoMode()) {
+            uploadInput.setAttribute('capture', 'user');
+        } else {
+            uploadInput.setAttribute('capture', 'environment');
+        }
+    }
+
+    function setSpriteMode(mode) {
+        spriteMode = mode;
+        const isPhoto = mode === 'photo';
+
+        modeDrawingBtn.classList.toggle('active', !isPhoto);
+        modePhotoBtn.classList.toggle('active', isPhoto);
+        modeDrawingBtn.setAttribute('aria-pressed', isPhoto ? 'false' : 'true');
+        modePhotoBtn.setAttribute('aria-pressed', isPhoto ? 'true' : 'false');
+
+        captureBtn.textContent = isPhoto ? 'Take Selfie' : 'Take Photo';
+        uploadLabel.textContent = isPhoto ? 'Upload Selfie' : 'Upload Photo';
+
+        drawingControls.classList.toggle('hidden', isPhoto);
+        photoHint.classList.toggle('hidden', !isPhoto);
+        processedPreviewWrap.classList.toggle('hidden', isPhoto);
+        previewRow.classList.toggle('preview-row-three', !isPhoto);
+        previewRow.classList.toggle('preview-row-two', isPhoto);
+
+        originalPreview.classList.toggle('pick-target', !isPhoto);
+        cameraPreview.classList.toggle('mirror', isPhoto);
+
+        updateUploadCapture();
+
+        if (pickBgMode && isPhoto) {
+            setPickBgMode(false);
+        }
+
+        pickedBackground = null;
+
+        if (rawCaptureCanvas) {
+            updateProcessedPreview();
+        } else if (spritesPanel.classList.contains('active')) {
+            startCamera();
+        }
     }
 
     function findContentBounds(imageData) {
@@ -185,13 +364,13 @@
         return { minX, minY, maxX, maxY };
     }
 
-    function processSpriteCanvas(sourceCanvas, threshold) {
+    function processSpriteCanvas(sourceCanvas, removalStrength, shadowCleanup, customBg) {
         const w = sourceCanvas.width;
         const h = sourceCanvas.height;
         const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-        let imageData = ctx.getImageData(0, 0, w, h);
+        const imageData = ctx.getImageData(0, 0, w, h);
 
-        imageData = removeWhiteBackground(imageData, threshold);
+        removeBackground(imageData, removalStrength, shadowCleanup, customBg);
         const bounds = findContentBounds(imageData);
 
         const out = document.createElement('canvas');
@@ -223,7 +402,16 @@
         return out;
     }
 
+    function drawOriginalPreview() {
+        if (!rawCaptureCanvas) return;
+        const ctx = originalPreview.getContext('2d');
+        ctx.clearRect(0, 0, originalPreview.width, originalPreview.height);
+        ctx.drawImage(rawCaptureCanvas, 0, 0, originalPreview.width, originalPreview.height);
+    }
+
     function drawPreviews(processedCanvas) {
+        drawOriginalPreview();
+
         const pCtx = processedPreview.getContext('2d');
         pCtx.clearRect(0, 0, processedPreview.width, processedPreview.height);
         pCtx.drawImage(processedCanvas, 0, 0, processedPreview.width, processedPreview.height);
@@ -246,14 +434,89 @@
 
     function updateProcessedPreview() {
         if (!rawCaptureCanvas) return;
-        const threshold = Number(thresholdSlider.value);
-        thresholdValue.textContent = String(threshold);
-        const processed = processSpriteCanvas(rawCaptureCanvas, threshold);
+
+        let processed;
+
+        if (isPhotoMode()) {
+            processed = processPhotoCanvas(rawCaptureCanvas);
+        } else {
+            const removalStrength = Number(removalSlider.value);
+            const shadowCleanup = Number(shadowSlider.value);
+            removalValue.textContent = String(removalStrength);
+            shadowValue.textContent = String(shadowCleanup);
+
+            processed = processSpriteCanvas(
+                rawCaptureCanvas,
+                removalStrength,
+                shadowCleanup,
+                pickedBackground
+            );
+        }
+
         drawPreviews(processed);
 
         processed.toBlob((blob) => {
             processedBlob = blob;
         }, 'image/png');
+    }
+
+    function setPickBgMode(active) {
+        if (isPhotoMode()) {
+            active = false;
+        }
+        pickBgMode = active;
+        pickBgBtn.classList.toggle('active', active);
+        originalPreview.classList.toggle('pick-mode', active);
+        pickBgHint.textContent = active
+            ? 'Tap the original photo on an empty area of paper'
+            : pickedBackground
+                ? `Paper color: rgb(${pickedBackground.r}, ${pickedBackground.g}, ${pickedBackground.b}) — tap Pick to change`
+                : 'Auto-detects paper from corners — or tap Pick to sample manually';
+    }
+
+    function sampleBackgroundFromPreview(clientX, clientY) {
+        if (!rawCaptureCanvas || isPhotoMode()) return;
+
+        const rect = originalPreview.getBoundingClientRect();
+        const x = Math.floor(((clientX - rect.left) / rect.width) * rawCaptureCanvas.width);
+        const y = Math.floor(((clientY - rect.top) / rect.height) * rawCaptureCanvas.height);
+        const ctx = rawCaptureCanvas.getContext('2d', { willReadFrequently: true });
+        const pixel = ctx.getImageData(x, y, 1, 1).data;
+
+        pickedBackground = { r: pixel[0], g: pixel[1], b: pixel[2] };
+        setPickBgMode(false);
+        updateProcessedPreview();
+        showToast(`Paper color sampled — rgb(${pickedBackground.r}, ${pickedBackground.g}, ${pickedBackground.b})`);
+    }
+
+    function loadImageToCanvas(source) {
+        const img = new Image();
+        img.onload = () => {
+            const size = Math.min(img.width, img.height);
+            const sx = (img.width - size) / 2;
+            const sy = (img.height - size) / 2;
+
+            rawCaptureCanvas = document.createElement('canvas');
+            rawCaptureCanvas.width = size;
+            rawCaptureCanvas.height = size;
+            const ctx = rawCaptureCanvas.getContext('2d');
+            ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+
+            pickedBackground = null;
+            spriteEdit.classList.remove('hidden');
+            captureBtn.classList.add('hidden');
+            setPickBgMode(false);
+            updateProcessedPreview();
+        };
+        img.onerror = () => showToast('Could not load that image.');
+        img.src = source;
+    }
+
+    function enterEditMode() {
+        spriteEdit.classList.remove('hidden');
+        captureBtn.classList.add('hidden');
+        setPickBgMode(false);
+        updateProcessedPreview();
     }
 
     // ---------------------------------------------------------
@@ -263,22 +526,26 @@
         hideError(cameraError);
 
         if (!isSecureContext()) {
-            showError(cameraError, 'Camera requires a secure connection. Run npm start and open http://localhost:3000/studio.html (not file://).');
+            showError(
+                cameraError,
+                'Live camera requires HTTPS (e.g. GitHub Pages). You can still use Upload Photo, or open via https://.'
+            );
             captureBtn.disabled = true;
             return;
         }
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showError(cameraError, 'Camera is not supported in this browser.');
+            showError(cameraError, 'Camera is not supported in this browser. Use Upload Photo instead.');
             captureBtn.disabled = true;
             return;
         }
 
         try {
             stopCamera();
+            const facingMode = getCameraFacingMode();
             cameraStream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: { ideal: 'environment' },
+                    facingMode: { ideal: facingMode },
                     width: { ideal: 1280 },
                     height: { ideal: 1280 }
                 },
@@ -287,7 +554,7 @@
             cameraPreview.srcObject = cameraStream;
             captureBtn.disabled = false;
         } catch (err) {
-            showError(cameraError, `Camera access denied or unavailable: ${err.message}`);
+            showError(cameraError, `Camera unavailable: ${err.message}. Try Upload Photo instead.`);
             captureBtn.disabled = true;
         }
     }
@@ -315,18 +582,36 @@
         rawCaptureCanvas.width = size;
         rawCaptureCanvas.height = size;
         const ctx = rawCaptureCanvas.getContext('2d');
+
+        if (isPhotoMode()) {
+            ctx.translate(size, 0);
+            ctx.scale(-1, 1);
+        }
         ctx.drawImage(cameraPreview, sx, sy, size, size, 0, 0, size, size);
 
-        spriteEdit.classList.remove('hidden');
-        captureBtn.classList.add('hidden');
-        updateProcessedPreview();
+        pickedBackground = null;
+        enterEditMode();
     }
 
     function retakePhoto() {
         rawCaptureCanvas = null;
         processedBlob = null;
+        pickedBackground = null;
+        pickBgMode = false;
         spriteEdit.classList.add('hidden');
         captureBtn.classList.remove('hidden');
+        uploadInput.value = '';
+        setPickBgMode(false);
+    }
+
+    function handleUpload(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => loadImageToCanvas(reader.result);
+        reader.onerror = () => showToast('Could not read that file.');
+        reader.readAsDataURL(file);
     }
 
     // ---------------------------------------------------------
@@ -346,7 +631,7 @@
         hideError(micError);
 
         if (!isSecureContext()) {
-            showError(micError, 'Microphone requires a secure connection. Run npm start and open via localhost.');
+            showError(micError, 'Microphone requires HTTPS (e.g. GitHub Pages).');
             return;
         }
 
@@ -480,10 +765,30 @@
     // Event bindings
     // ---------------------------------------------------------
     captureBtn.addEventListener('click', capturePhoto);
+    uploadInput.addEventListener('change', handleUpload);
     retakeBtn.addEventListener('click', retakePhoto);
-    thresholdSlider.addEventListener('input', updateProcessedPreview);
+    removalSlider.addEventListener('input', updateProcessedPreview);
+    shadowSlider.addEventListener('input', updateProcessedPreview);
     saveSpriteBtn.addEventListener('click', saveSprite);
     resetSpriteBtn.addEventListener('click', resetSprite);
+
+    modeDrawingBtn.addEventListener('click', () => setSpriteMode('drawing'));
+    modePhotoBtn.addEventListener('click', () => setSpriteMode('photo'));
+
+    pickBgBtn.addEventListener('click', () => {
+        if (!rawCaptureCanvas || isPhotoMode()) return;
+        setPickBgMode(!pickBgMode);
+    });
+
+    function handleOriginalPreviewPick(event) {
+        if (!pickBgMode || isPhotoMode()) return;
+        event.preventDefault();
+        const point = event.touches ? event.touches[0] : event;
+        sampleBackgroundFromPreview(point.clientX, point.clientY);
+    }
+
+    originalPreview.addEventListener('click', handleOriginalPreviewPick);
+    originalPreview.addEventListener('touchstart', handleOriginalPreviewPick, { passive: false });
 
     recordBtn.addEventListener('click', startRecording);
     stopRecordBtn.addEventListener('click', stopRecording);
@@ -497,6 +802,7 @@
         AssetStore.revokeAllObjectUrls();
     });
 
-    // Boot camera on load (sprites tab is default)
+    setPickBgMode(false);
+    setSpriteMode('drawing');
     startCamera();
 })();

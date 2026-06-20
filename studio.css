@@ -110,12 +110,53 @@ body {
     gap: 0.4rem;
 }
 
-.field-group label {
+.field-group label,
+.field-label {
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     color: rgba(255, 255, 255, 0.5);
     text-transform: uppercase;
+}
+
+.mode-toggle {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.mode-btn {
+    flex: 1;
+    min-height: 48px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.6);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.mode-btn.active {
+    background: rgba(0, 242, 254, 0.12);
+    border-color: rgba(0, 242, 254, 0.45);
+    color: #00f2fe;
+}
+
+#camera-preview.mirror {
+    transform: scaleX(-1);
+}
+
+.photo-hint {
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.preview-row-two {
+    grid-template-columns: 1fr 1fr;
 }
 
 .field-hint {
@@ -229,6 +270,58 @@ input[type="range"] {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
+}
+
+.preview-row-three {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 420px) {
+    .preview-row-three {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .preview-row-three .preview-card:last-child {
+        grid-column: 1 / -1;
+        max-width: 50%;
+        margin: 0 auto;
+    }
+}
+
+.upload-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-align: center;
+}
+
+.pick-bg-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.pick-bg-btn.active {
+    border-color: rgba(0, 242, 254, 0.6);
+    background: rgba(0, 242, 254, 0.12);
+    color: #00f2fe;
+}
+
+.pick-bg-hint {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1.4;
+}
+
+.pick-target {
+    cursor: crosshair;
+    touch-action: manipulation;
+}
+
+.pick-target.pick-mode {
+    outline: 2px solid rgba(0, 242, 254, 0.6);
+    outline-offset: 2px;
 }
 
 .preview-card {
