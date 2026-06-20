@@ -202,6 +202,10 @@
     const dangerWarningEl = document.getElementById('danger-warning');
     const gameOverOverlayEl = document.getElementById('game-over-overlay');
     const finalScoreValueEl = document.getElementById('final-score-value');
+    const bestScoreValueEl = document.getElementById('best-score-value');
+    const bestScoreCounterEl = document.getElementById('best-score-counter');
+    const newBestBannerEl = document.getElementById('new-best-banner');
+    const expertModeBtn = document.getElementById('expert-mode-btn');
     const restartBtn = document.getElementById('restart-btn');
 
     let engine;
@@ -226,8 +230,19 @@
     
     // Game Over state variables
     let isGameOver = false;
-    let aboveLineTime = 0;      // Timestamp when shapes stacked past launch line
-    const BREACH_LIMIT = 3000;  // 3 seconds limit (in ms)
+    let aboveLineTime = 0;
+
+    // Game modes, combos, and persistent stats
+    const GAME_MODES = {
+        classic: { dropCooldown: 500, breachLimit: 3000, maxDropTier: 3, showTierNames: false },
+        expert: { dropCooldown: 250, breachLimit: 2000, maxDropTier: 4, showTierNames: true }
+    };
+    const COMBO_WINDOW_MS = 1500;
+    let isExpertMode = false;
+    let gameStats = { classicBest: 0, expertBest: 0, totalGames: 0, expertMode: false };
+    let lastMergeTime = 0;
+    let comboCount = 0;
+    let comboPopups = [];
 
     // Authoritative tier lookup — survives Matter body property edge cases
     const bodyTierById = new Map();
@@ -253,18 +268,143 @@
     };
 
     // ---------------------------------------------------------
-    // 3. Matter.js Engine Initialization
+    // 2b. Game Mode, Stats & Combo Helpers
     // ---------------------------------------------------------
-    // Helper: Select a random tier index from 0 to 2 (Asteroid, Moon, Planet)
-    function randomDropTier() {
-        return Math.floor(Math.random() * 3);
+    function getModeConfig() {
+        return isExpertMode ? GAME_MODES.expert : GAME_MODES.classic;
+    }
+
+    function getBreachLimit() {
+        return getModeConfig().breachLimit;
+    }
+
+    function getDropCooldown() {
+        return getModeConfig().dropCooldown;
+    }
+
+    function getCurrentBest() {
+        return isExpertMode ? (gameStats.expertBest || 0) : (gameStats.classicBest || 0);
+    }
+
+    async function loadGameStats() {
+        if (!window.AssetStore?.getGameStats) return;
+
+        try {
+            gameStats = await AssetStore.getGameStats();
+            isExpertMode = Boolean(gameStats.expertMode);
+        } catch (err) {
+            console.warn('Could not load game stats:', err);
+        }
+
+        updateBestScoreDisplay();
+        updateExpertModeUI();
+    }
+
+    function updateBestScoreDisplay() {
+        if (bestScoreCounterEl) {
+            bestScoreCounterEl.textContent = getCurrentBest();
+        }
+    }
+
+    function updateExpertModeUI() {
+        if (!expertModeBtn) return;
+        expertModeBtn.classList.toggle('active', isExpertMode);
+        expertModeBtn.setAttribute('aria-pressed', String(isExpertMode));
+    }
+
+    async function persistGameStats() {
+        if (!window.AssetStore?.saveGameStats) return;
+        gameStats.expertMode = isExpertMode;
+        try {
+            await AssetStore.saveGameStats(gameStats);
+        } catch (err) {
+            console.warn('Could not save game stats:', err);
+        }
+    }
+
+    async function recordGameEnd(finalScore) {
+        gameStats.totalGames = (gameStats.totalGames || 0) + 1;
+        const bestKey = isExpertMode ? 'expertBest' : 'classicBest';
+        const previousBest = gameStats[bestKey] || 0;
+        const isNewBest = finalScore > previousBest;
+
+        if (isNewBest) {
+            gameStats[bestKey] = finalScore;
+        }
+
+        await persistGameStats();
+        updateBestScoreDisplay();
+
+        return { isNewBest, bestScore: gameStats[bestKey] };
+    }
+
+    function applyComboScore(basePoints, midX, midY) {
+        const now = Date.now();
+
+        if (now - lastMergeTime <= COMBO_WINDOW_MS) {
+            comboCount += 1;
+        } else {
+            comboCount = 1;
+        }
+        lastMergeTime = now;
+
+        const multiplier = comboCount >= 3 ? 3 : comboCount >= 2 ? 2 : 1;
+        const points = basePoints * multiplier;
+
+        if (multiplier > 1) {
+            comboPopups.push({
+                text: `COMBO x${multiplier}`,
+                x: midX,
+                y: midY - 24,
+                alpha: 1,
+                life: 72
+            });
+        }
+
+        return points;
+    }
+
+    function resetComboState() {
+        lastMergeTime = 0;
+        comboCount = 0;
+        comboPopups = [];
+    }
+
+    function updateComboPopups() {
+        for (let i = comboPopups.length - 1; i >= 0; i--) {
+            const popup = comboPopups[i];
+            popup.life -= 1;
+            popup.y -= 0.6;
+            popup.alpha = Math.max(0, popup.life / 72);
+            if (popup.life <= 0) {
+                comboPopups.splice(i, 1);
+            }
+        }
+    }
+
+    function toggleExpertMode() {
+        isExpertMode = !isExpertMode;
+        updateExpertModeUI();
+        updateBestScoreDisplay();
+        persistGameStats();
+
+        if (!isGameOver && engine) {
+            currentDropTier = randomDropTier();
+            nextDropTier = randomDropTier();
+        }
     }
 
     // ---------------------------------------------------------
     // 3. Matter.js Engine Initialization
     // ---------------------------------------------------------
+    // Helper: Select a random tier index based on current mode
+    function randomDropTier() {
+        const maxTier = getModeConfig().maxDropTier;
+        return Math.floor(Math.random() * maxTier);
+    }
     async function initPhysics() {
         await resolveAssetUrls();
+        await loadGameStats();
         preloadSprites();
         audioManager.init();
 
@@ -389,7 +529,7 @@
             currentDropTier = nextDropTier;
             nextDropTier = randomDropTier();
             canDrop = true;
-        }, 500);
+        }, getDropCooldown());
     }
 
     function spawnMergedCircle(x, y, tierIndex) {
@@ -455,9 +595,10 @@
         bodyTierById.clear();
         mergedPairsThisStep.clear();
         
-        // Reset score, gravity, and state
+        // Reset score, gravity, combo, and state
         score = 0;
         particles = [];
+        resetComboState();
         isGameOver = false;
         aboveLineTime = 0;
 
@@ -473,6 +614,7 @@
         // Hide warning and game over overlay elements
         if (dangerWarningEl) dangerWarningEl.classList.add('hidden');
         if (gameOverOverlayEl) gameOverOverlayEl.classList.add('hidden');
+        if (newBestBannerEl) newBestBannerEl.classList.add('hidden');
         
         // Reload drop queue
         currentDropTier = randomDropTier();
@@ -579,6 +721,7 @@
 
         Matter.Events.on(engine, 'afterUpdate', () => {
             updateParticles();
+            updateComboPopups();
 
             // Check if shapes stack past the launch line (Game Over breaching logic)
             checkLineBreach();
@@ -615,14 +758,16 @@
         Composite.remove(engine.world, [bodyA, bodyB]);
 
         const currentTierInfo = CELESTIAL_TIERS[tier];
-        score += currentTierInfo.score;
+        let mergePoints = applyComboScore(currentTierInfo.score, midX, midY);
+        score += mergePoints;
         spawnMergeParticles(midX, midY, currentTierInfo.color);
 
         const nextTierIndex = tier + 1;
         if (nextTierIndex < CELESTIAL_TIERS.length) {
             spawnMergedCircle(midX, midY, nextTierIndex);
         } else {
-            score += 100;
+            mergePoints = applyComboScore(100, midX, midY - 36);
+            score += mergePoints;
             spawnSupernovaEffect(midX, midY);
         }
 
@@ -655,14 +800,15 @@
             }
 
             const elapsed = Date.now() - aboveLineTime;
-            const secondsRemaining = Math.max(0, (BREACH_LIMIT - elapsed) / 1000);
+            const breachLimit = getBreachLimit();
+            const secondsRemaining = Math.max(0, (breachLimit - elapsed) / 1000);
 
             if (dangerWarningEl) {
                 dangerWarningEl.classList.remove('hidden');
                 dangerWarningEl.textContent = `LINE BREACH! ${secondsRemaining.toFixed(1)}s`;
             }
 
-            if (elapsed >= BREACH_LIMIT) {
+            if (elapsed >= breachLimit) {
                 triggerGameOver();
             }
         } else {
@@ -671,7 +817,7 @@
         }
     }
 
-    function triggerGameOver() {
+    async function triggerGameOver() {
         if (isGameOver) return;
 
         isGameOver = true;
@@ -681,7 +827,13 @@
         unlockAudio();
         audioManager.play('gameover');
 
+        const { isNewBest, bestScore } = await recordGameEnd(score);
+
         if (finalScoreValueEl) finalScoreValueEl.textContent = score;
+        if (bestScoreValueEl) bestScoreValueEl.textContent = bestScore;
+        if (newBestBannerEl) {
+            newBestBannerEl.classList.toggle('hidden', !isNewBest);
+        }
         if (gameOverOverlayEl) gameOverOverlayEl.classList.remove('hidden');
         if (dangerWarningEl) dangerWarningEl.classList.add('hidden');
     }
@@ -833,6 +985,17 @@
             ctx.save();
             ctx.translate(previewX, LAUNCH_Y);
             drawCelestialSphere(ctx, tier, 0, 0.7); // 70% opacity for preview
+
+            if (getModeConfig().showTierNames) {
+                ctx.rotate(0);
+                ctx.font = '700 11px "Outfit", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.fillText(tier.name.toUpperCase(), 0, tier.radius + 6);
+            }
             ctx.restore();
         }
 
@@ -871,6 +1034,13 @@
         ctx.shadowBlur = 10;
         ctx.shadowColor = 'rgba(0, 242, 254, 0.5)';
         ctx.fillText(`SCORE: ${score}`, 24, 40);
+
+        if (isExpertMode) {
+            ctx.font = '700 11px "Outfit", sans-serif';
+            ctx.fillStyle = 'rgba(255, 204, 0, 0.9)';
+            ctx.shadowBlur = 0;
+            ctx.fillText('EXPERT MODE', 24, 58);
+        }
         ctx.restore();
 
         // 6. Draw "Next Up" box in top-right
@@ -905,8 +1075,30 @@
             const scale = displayRadius / nextTier.radius;
             ctx.scale(scale, scale);
             drawCelestialSphere(ctx, nextTier, 0, 1.0);
+
+            if (getModeConfig().showTierNames) {
+                ctx.font = '600 9px "Outfit", sans-serif';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(nextTier.name, 0, nextTier.radius + 10);
+            }
             ctx.restore();
         }
+
+        // 7. Combo popups
+        ctx.save();
+        comboPopups.forEach((popup) => {
+            ctx.globalAlpha = popup.alpha;
+            ctx.font = '800 18px "Outfit", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffd60a';
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(255, 214, 10, 0.6)';
+            ctx.fillText(popup.text, popup.x, popup.y);
+        });
+        ctx.restore();
     }
 
     // ---------------------------------------------------------
@@ -954,11 +1146,13 @@
 
         bindConsoleButton(resetBtn, clearAllCircles);
         bindConsoleButton(gravityToggleBtn, toggleGravity);
+        bindConsoleButton(expertModeBtn, toggleExpertMode);
 
         if (restartBtn) {
             restartBtn.addEventListener('click', (event) => {
                 event.stopPropagation();
                 unlockAudio();
+                if (newBestBannerEl) newBestBannerEl.classList.add('hidden');
                 clearAllCircles();
             });
         }
