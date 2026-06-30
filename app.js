@@ -206,6 +206,9 @@
     const bestScoreCounterEl = document.getElementById('best-score-counter');
     const newBestBannerEl = document.getElementById('new-best-banner');
     const expertModeBtn = document.getElementById('expert-mode-btn');
+    const milestoneToastEl = document.getElementById('milestone-toast');
+    const milestoneTitleEl = document.getElementById('milestone-title');
+    const milestoneSubtitleEl = document.getElementById('milestone-subtitle');
     const restartBtn = document.getElementById('restart-btn');
 
     let engine;
@@ -238,11 +241,22 @@
         expert: { dropCooldown: 250, breachLimit: 2000, maxDropTier: 4, showTierNames: true }
     };
     const COMBO_WINDOW_MS = 1500;
+    const SCORE_MILESTONES = [500, 1000, 5000];
     let isExpertMode = false;
-    let gameStats = { classicBest: 0, expertBest: 0, totalGames: 0, expertMode: false };
+    let gameStats = {
+        classicBest: 0,
+        expertBest: 0,
+        totalGames: 0,
+        expertMode: false,
+        bestTierReached: 0,
+        milestones: { first_star: false, first_nebula: false }
+    };
     let lastMergeTime = 0;
     let comboCount = 0;
     let comboPopups = [];
+    let runCrossedScoreMilestones = new Set();
+    let maxTierThisRun = 0;
+    let milestoneToastTimer = null;
 
     // Authoritative tier lookup — survives Matter body property edge cases
     const bodyTierById = new Map();
@@ -286,12 +300,89 @@
         return isExpertMode ? (gameStats.expertBest || 0) : (gameStats.classicBest || 0);
     }
 
+    function ensureMilestonesState() {
+        if (!gameStats.milestones) {
+            gameStats.milestones = { first_star: false, first_nebula: false };
+        }
+        if (gameStats.bestTierReached === undefined) {
+            gameStats.bestTierReached = 0;
+        }
+    }
+
+    function showMilestone(title, subtitle) {
+        if (!milestoneToastEl || !milestoneTitleEl) return;
+
+        milestoneTitleEl.textContent = title;
+        if (milestoneSubtitleEl) {
+            milestoneSubtitleEl.textContent = subtitle || '';
+            milestoneSubtitleEl.style.display = subtitle ? 'block' : 'none';
+        }
+
+        milestoneToastEl.classList.remove('hidden');
+        clearTimeout(milestoneToastTimer);
+        milestoneToastTimer = setTimeout(() => {
+            milestoneToastEl.classList.add('hidden');
+        }, 2800);
+    }
+
+    function spawnMilestoneBurst(x, y) {
+        for (let i = 0; i < 20; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 4 + 2;
+            particles.push({
+                x,
+                y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                radius: Math.random() * 4 + 2,
+                color: i % 2 === 0 ? '#ffd60a' : '#00f2fe',
+                alpha: 1,
+                decay: Math.random() * 0.02 + 0.012
+            });
+        }
+    }
+
+    function updateMaxTier(tierIndex) {
+        if (tierIndex > maxTierThisRun) {
+            maxTierThisRun = tierIndex;
+        }
+    }
+
+    function checkScoreMilestones() {
+        SCORE_MILESTONES.forEach((threshold) => {
+            if (score >= threshold && !runCrossedScoreMilestones.has(threshold)) {
+                runCrossedScoreMilestones.add(threshold);
+                showMilestone(`${threshold} POINTS!`, 'Score milestone reached');
+                spawnMilestoneBurst(container.clientWidth / 2, container.clientHeight * 0.22);
+            }
+        });
+    }
+
+    async function celebrateTierMilestone(tierIndex, x, y) {
+        ensureMilestonesState();
+
+        const milestoneKey = tierIndex === 3 ? 'first_star' : tierIndex === 4 ? 'first_nebula' : null;
+        if (!milestoneKey || gameStats.milestones[milestoneKey]) return;
+
+        gameStats.milestones[milestoneKey] = true;
+        const tier = CELESTIAL_TIERS[tierIndex];
+        showMilestone(`First ${tier.name}!`, `${tier.label} unlocked`);
+        spawnSupernovaEffect(x, y);
+        await persistGameStats();
+    }
+
+    function resetRunMilestones() {
+        runCrossedScoreMilestones.clear();
+        maxTierThisRun = 0;
+    }
+
     async function loadGameStats() {
         if (!window.AssetStore?.getGameStats) return;
 
         try {
             gameStats = await AssetStore.getGameStats();
             isExpertMode = Boolean(gameStats.expertMode);
+            ensureMilestonesState();
         } catch (err) {
             console.warn('Could not load game stats:', err);
         }
@@ -330,6 +421,10 @@
 
         if (isNewBest) {
             gameStats[bestKey] = finalScore;
+        }
+
+        if (maxTierThisRun > (gameStats.bestTierReached || 0)) {
+            gameStats.bestTierReached = maxTierThisRun;
         }
 
         await persistGameStats();
@@ -513,6 +608,9 @@
         // Add to the physics simulation world
         Composite.add(engine.world, circle);
 
+        updateMaxTier(currentDropTier);
+        celebrateTierMilestone(currentDropTier, previewX, LAUNCH_Y);
+
         // Play the spawn sound effect
         audioManager.play('spawn');
 
@@ -595,10 +693,11 @@
         bodyTierById.clear();
         mergedPairsThisStep.clear();
         
-        // Reset score, gravity, combo, and state
+        // Reset score, gravity, combo, milestones, and state
         score = 0;
         particles = [];
         resetComboState();
+        resetRunMilestones();
         isGameOver = false;
         aboveLineTime = 0;
 
@@ -615,6 +714,7 @@
         if (dangerWarningEl) dangerWarningEl.classList.add('hidden');
         if (gameOverOverlayEl) gameOverOverlayEl.classList.add('hidden');
         if (newBestBannerEl) newBestBannerEl.classList.add('hidden');
+        if (milestoneToastEl) milestoneToastEl.classList.add('hidden');
         
         // Reload drop queue
         currentDropTier = randomDropTier();
@@ -765,12 +865,15 @@
         const nextTierIndex = tier + 1;
         if (nextTierIndex < CELESTIAL_TIERS.length) {
             spawnMergedCircle(midX, midY, nextTierIndex);
+            updateMaxTier(nextTierIndex);
+            celebrateTierMilestone(nextTierIndex, midX, midY);
         } else {
             mergePoints = applyComboScore(100, midX, midY - 36);
             score += mergePoints;
             spawnSupernovaEffect(midX, midY);
         }
 
+        checkScoreMilestones();
         audioManager.play('merge');
         updateStats();
     }
