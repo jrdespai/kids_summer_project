@@ -171,7 +171,12 @@
                         classicBest: 0,
                         expertBest: 0,
                         totalGames: 0,
-                        expertMode: false
+                        expertMode: false,
+                        bestTierReached: 0,
+                        milestones: {
+                            first_star: false,
+                            first_nebula: false
+                        }
                     };
                 }
                 return record;

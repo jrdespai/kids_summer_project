@@ -403,6 +403,44 @@ body {
     transform: translate(-50%, -10px) scale(0.9);
 }
 
+.milestone-toast {
+    position: absolute;
+    top: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 600;
+    pointer-events: none;
+    text-align: center;
+    padding: 1rem 1.5rem;
+    border-radius: 16px;
+    background: rgba(8, 12, 24, 0.92);
+    border: 1px solid rgba(255, 214, 10, 0.45);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 214, 10, 0.2);
+    opacity: 1;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.milestone-toast.hidden {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.92);
+}
+
+.milestone-title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #ffd60a;
+    text-shadow: 0 0 16px rgba(255, 214, 10, 0.45);
+}
+
+.milestone-subtitle {
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.65);
+}
+
 @keyframes warningPulse {
     0%, 100% {
         transform: translate(-50%, 0) scale(1);
