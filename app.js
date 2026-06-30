@@ -209,6 +209,9 @@
     const milestoneToastEl = document.getElementById('milestone-toast');
     const milestoneTitleEl = document.getElementById('milestone-title');
     const milestoneSubtitleEl = document.getElementById('milestone-subtitle');
+    const dailyChallengeEl = document.getElementById('daily-challenge');
+    const dailyChallengeTextEl = document.getElementById('daily-challenge-text');
+    const dailyChallengeProgressEl = document.getElementById('daily-challenge-progress');
     const restartBtn = document.getElementById('restart-btn');
 
     let engine;
@@ -249,7 +252,8 @@
         totalGames: 0,
         expertMode: false,
         bestTierReached: 0,
-        milestones: { first_star: false, first_nebula: false }
+        milestones: { first_star: false, first_nebula: false },
+        dailyChallenges: {}
     };
     let lastMergeTime = 0;
     let comboCount = 0;
@@ -257,6 +261,99 @@
     let runCrossedScoreMilestones = new Set();
     let maxTierThisRun = 0;
     let milestoneToastTimer = null;
+    let todaysChallenge = null;
+    let runChallengeState = {
+        drops: 0,
+        merges: 0,
+        maxCombo: 1,
+        gravityReversed: false
+    };
+
+    const DAILY_CHALLENGE_POOL = [
+        {
+            id: 'reach_star',
+            title: 'Reach a Star',
+            progress(run) {
+                if (run.maxTier >= 3) return 'Complete!';
+                const names = ['Asteroid', 'Moon', 'Planet', 'Star'];
+                return `Highest: ${names[run.maxTier]}`;
+            },
+            check(run) { return run.maxTier >= 3; }
+        },
+        {
+            id: 'reach_nebula',
+            title: 'Create a Nebula',
+            progress(run) {
+                if (run.maxTier >= 4) return 'Complete!';
+                const names = ['Asteroid', 'Moon', 'Planet', 'Star', 'Nebula'];
+                return `Highest: ${names[run.maxTier]}`;
+            },
+            check(run) { return run.maxTier >= 4; }
+        },
+        {
+            id: 'score_500',
+            title: 'Score 500 points',
+            progress(run) { return `${Math.min(run.score, 500)}/500`; },
+            check(run) { return run.score >= 500; }
+        },
+        {
+            id: 'score_300',
+            title: 'Score 300 points',
+            progress(run) { return `${Math.min(run.score, 300)}/300`; },
+            check(run) { return run.score >= 300; }
+        },
+        {
+            id: 'score_800_40drops',
+            title: 'Score 800 in 40 drops or less',
+            progress(run) { return `${run.score}/800 · ${run.drops}/40 drops`; },
+            check(run) { return run.score >= 800 && run.drops <= 40; }
+        },
+        {
+            id: 'score_400_30drops',
+            title: 'Score 400 in 30 drops or less',
+            progress(run) { return `${run.score}/400 · ${run.drops}/30 drops`; },
+            check(run) { return run.score >= 400 && run.drops <= 30; }
+        },
+        {
+            id: 'merges_8',
+            title: 'Merge 8 times in one run',
+            progress(run) { return `${Math.min(run.merges, 8)}/8 merges`; },
+            check(run) { return run.merges >= 8; }
+        },
+        {
+            id: 'merges_15',
+            title: 'Merge 15 times in one run',
+            progress(run) { return `${Math.min(run.merges, 15)}/15 merges`; },
+            check(run) { return run.merges >= 15; }
+        },
+        {
+            id: 'combo_3',
+            title: 'Hit a 3x combo',
+            progress(run) { return run.maxCombo >= 3 ? 'Complete!' : `Best combo: ${run.maxCombo}x`; },
+            check(run) { return run.maxCombo >= 3; }
+        },
+        {
+            id: 'combo_2',
+            title: 'Hit a 2x combo',
+            progress(run) { return run.maxCombo >= 2 ? 'Complete!' : 'Chain 2 merges quickly'; },
+            check(run) { return run.maxCombo >= 2; }
+        },
+        {
+            id: 'planet_20drops',
+            title: 'Reach Planet tier in 20 drops',
+            progress(run) { return `${run.drops}/20 drops · tier ${run.maxTier}/2`; },
+            check(run) { return run.maxTier >= 2 && run.drops <= 20; }
+        },
+        {
+            id: 'gravity_200',
+            title: 'Score 200 with gravity reversed',
+            progress(run) {
+                if (!run.gravityReversed) return `${run.score}/200 · flip gravity!`;
+                return `${Math.min(run.score, 200)}/200`;
+            },
+            check(run) { return run.gravityReversed && run.score >= 200; }
+        }
+    ];
 
     // Authoritative tier lookup — survives Matter body property edge cases
     const bodyTierById = new Map();
@@ -307,6 +404,105 @@
         if (gameStats.bestTierReached === undefined) {
             gameStats.bestTierReached = 0;
         }
+        if (!gameStats.dailyChallenges) {
+            gameStats.dailyChallenges = {};
+        }
+    }
+
+    function getTodayKey() {
+        const d = new Date();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${month}-${day}`;
+    }
+
+    function hashDateString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash);
+    }
+
+    function pickTodaysChallenge() {
+        const dateKey = getTodayKey();
+        const index = hashDateString(dateKey) % DAILY_CHALLENGE_POOL.length;
+        return { ...DAILY_CHALLENGE_POOL[index], dateKey };
+    }
+
+    function isDailyChallengeCompletedToday() {
+        ensureMilestonesState();
+        const record = gameStats.dailyChallenges[getTodayKey()];
+        return Boolean(record && record.completed);
+    }
+
+    function getRunChallengeSnapshot() {
+        return {
+            score,
+            maxTier: maxTierThisRun,
+            drops: runChallengeState.drops,
+            merges: runChallengeState.merges,
+            maxCombo: runChallengeState.maxCombo,
+            gravityReversed: runChallengeState.gravityReversed || isGravityReversed
+        };
+    }
+
+    function updateDailyChallengeUI(completedOverride) {
+        if (!dailyChallengeEl || !todaysChallenge) return;
+
+        const completed = completedOverride === true || isDailyChallengeCompletedToday();
+        dailyChallengeEl.classList.toggle('completed', completed);
+
+        if (completed) {
+            dailyChallengeTextEl.textContent = todaysChallenge.title;
+            dailyChallengeProgressEl.textContent = 'Challenge complete!';
+            return;
+        }
+
+        dailyChallengeTextEl.textContent = todaysChallenge.title;
+        dailyChallengeProgressEl.textContent = todaysChallenge.progress(getRunChallengeSnapshot());
+    }
+
+    async function completeDailyChallenge() {
+        if (isDailyChallengeCompletedToday()) return;
+
+        ensureMilestonesState();
+        const today = getTodayKey();
+        gameStats.dailyChallenges[today] = {
+            completed: true,
+            completedAt: Date.now(),
+            challengeId: todaysChallenge.id
+        };
+        await persistGameStats();
+        updateDailyChallengeUI(true);
+        showMilestone('Daily Challenge Complete!', todaysChallenge.title);
+        spawnMilestoneBurst(container.clientWidth / 2, container.clientHeight * 0.35);
+    }
+
+    function checkDailyChallenge() {
+        if (!todaysChallenge || isDailyChallengeCompletedToday()) return;
+
+        const snapshot = getRunChallengeSnapshot();
+        updateDailyChallengeUI(false);
+
+        if (todaysChallenge.check(snapshot)) {
+            completeDailyChallenge();
+        }
+    }
+
+    function initDailyChallenge() {
+        todaysChallenge = pickTodaysChallenge();
+        updateDailyChallengeUI(false);
+    }
+
+    function resetRunChallengeState() {
+        runChallengeState = {
+            drops: 0,
+            merges: 0,
+            maxCombo: 1,
+            gravityReversed: false
+        };
     }
 
     function showMilestone(title, subtitle) {
@@ -374,6 +570,7 @@
     function resetRunMilestones() {
         runCrossedScoreMilestones.clear();
         maxTierThisRun = 0;
+        resetRunChallengeState();
     }
 
     async function loadGameStats() {
@@ -387,6 +584,7 @@
             console.warn('Could not load game stats:', err);
         }
 
+        initDailyChallenge();
         updateBestScoreDisplay();
         updateExpertModeUI();
     }
@@ -454,6 +652,10 @@
                 alpha: 1,
                 life: 72
             });
+        }
+
+        if (multiplier > runChallengeState.maxCombo) {
+            runChallengeState.maxCombo = multiplier;
         }
 
         return points;
@@ -608,6 +810,7 @@
         // Add to the physics simulation world
         Composite.add(engine.world, circle);
 
+        runChallengeState.drops += 1;
         updateMaxTier(currentDropTier);
         celebrateTierMilestone(currentDropTier, previewX, LAUNCH_Y);
 
@@ -681,6 +884,8 @@
         void scoreCounterEl.offsetWidth; 
         shapeCounterEl.classList.add('bump');
         scoreCounterEl.classList.add('bump');
+
+        checkDailyChallenge();
     }
 
     function clearAllCircles() {
@@ -739,6 +944,10 @@
         isGravityReversed = !isGravityReversed;
         engine.gravity.y = isGravityReversed ? REVERSED_GRAVITY_Y : NORMAL_GRAVITY_Y;
 
+        if (isGravityReversed) {
+            runChallengeState.gravityReversed = true;
+        }
+
         // Sleeping bodies ignore gravity changes until they are woken
         wakeAllDynamicBodies();
 
@@ -746,6 +955,8 @@
             gravityToggleBtn.classList.toggle('active', isGravityReversed);
             gravityToggleBtn.setAttribute('aria-pressed', String(isGravityReversed));
         }
+
+        checkDailyChallenge();
     }
 
     function setupControlBarTouchShield() {
@@ -856,6 +1067,8 @@
         unregisterBody(bodyA);
         unregisterBody(bodyB);
         Composite.remove(engine.world, [bodyA, bodyB]);
+
+        runChallengeState.merges += 1;
 
         const currentTierInfo = CELESTIAL_TIERS[tier];
         let mergePoints = applyComboScore(currentTierInfo.score, midX, midY);

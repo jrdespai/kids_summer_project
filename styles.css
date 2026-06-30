@@ -441,6 +441,62 @@ body {
     color: rgba(255, 255, 255, 0.65);
 }
 
+.daily-challenge {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 550;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    max-width: calc(100% - 2rem);
+    padding: 0.55rem 1rem;
+    border-radius: 12px;
+    background: rgba(8, 12, 24, 0.82);
+    border: 1px solid rgba(0, 242, 254, 0.25);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    text-align: center;
+}
+
+.daily-challenge.completed {
+    border-color: rgba(52, 211, 153, 0.45);
+    background: rgba(8, 24, 20, 0.88);
+}
+
+.daily-challenge-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: rgba(0, 242, 254, 0.75);
+    text-transform: uppercase;
+}
+
+.daily-challenge.completed .daily-challenge-label {
+    color: rgba(52, 211, 153, 0.85);
+}
+
+.daily-challenge-text {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #f8fafc;
+    line-height: 1.25;
+}
+
+.daily-challenge-progress {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.05em;
+}
+
+.daily-challenge.completed .daily-challenge-progress {
+    color: rgba(52, 211, 153, 0.9);
+}
+
 @keyframes warningPulse {
     0%, 100% {
         transform: translate(-50%, 0) scale(1);

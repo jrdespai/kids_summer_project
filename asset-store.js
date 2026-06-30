@@ -176,7 +176,8 @@
                         milestones: {
                             first_star: false,
                             first_nebula: false
-                        }
+                        },
+                        dailyChallenges: {}
                     };
                 }
                 return record;
